@@ -6,22 +6,25 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using LeaveManagementSystem.Web.Data;
+using LeaveManagementSystem.Web.Models.LeaveTypes;
+using AutoMapper;
+using LeaveManagementSystem.Web.Services;
 
 namespace LeaveManagementSystem.Web.Controllers
 {
-    public class LeaveTypesController : Controller
+    public class LeaveTypesController(ILeaveTypesService leaveTypesService) : Controller
     {
-        private readonly ApplicationDbContext _context;
+        private readonly ILeaveTypesService _leaveTypesService = leaveTypesService; 
+        private const string NameExistValidationMessage = "This leave type alsready exist in the database";
 
-        public LeaveTypesController(ApplicationDbContext context)
-        {
-            _context = context;
-        }
+        
 
         // GET: LeaveTypes
         public async Task<IActionResult> Index()
         {
-            return View(await _context.LeaveTypes.ToListAsync());
+            var viewData = await _leaveTypesService.GetAll();
+            //return the view model to view
+            return View(viewData);
         }
 
         // GET: LeaveTypes/Details/5
@@ -31,10 +34,8 @@ namespace LeaveManagementSystem.Web.Controllers
             {
                 return NotFound();
             }
-              //Parameterizatio - key for preventing SQL Injection attacks
-              //Select * from LeaveTypes where Id = @id
-            var leaveType = await _context.LeaveTypes
-                .FirstOrDefaultAsync(m => m.Id == id);
+        
+            var leaveType = await _leaveTypesService.Get<LeaveTypeReadOnlyVM>(id.Value);
             if (leaveType == null)
             {
                 return NotFound();
@@ -54,17 +55,21 @@ namespace LeaveManagementSystem.Web.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Name,NumberOfDays")] LeaveType leaveType)
+        public async Task<IActionResult> Create(LeaveTypeCreateVM leaveTypeCreate)
         {
+            if(await _leaveTypesService.CheckIfLeaveTypeNameExists(leaveTypeCreate.Name))
+            {
+                ModelState.AddModelError(nameof(leaveTypeCreate.Name), NameExistValidationMessage);
+            }
             if (ModelState.IsValid)
             {
-                _context.Add(leaveType);
-                await _context.SaveChangesAsync();
+                await _leaveTypesService.Create(leaveTypeCreate);
                 return RedirectToAction(nameof(Index));
             }
-            return View(leaveType);
+            return View(leaveTypeCreate);
         }
 
+        
         // GET: LeaveTypes/Edit/5
         public async Task<IActionResult> Edit(int? id)
         {
@@ -72,12 +77,13 @@ namespace LeaveManagementSystem.Web.Controllers
             {
                 return NotFound();
             }
-
-            var leaveType = await _context.LeaveTypes.FindAsync(id);
+        
+            var leaveType = await _leaveTypesService.Get<LeaveTypeEditVM>(id.Value);
             if (leaveType == null)
             {
                 return NotFound();
             }
+
             return View(leaveType);
         }
 
@@ -86,23 +92,26 @@ namespace LeaveManagementSystem.Web.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,NumberOfDays")] LeaveType leaveType)
+        public async Task<IActionResult> Edit(int id, LeaveTypeEditVM leaveTypeEdit)
         {
-            if (id != leaveType.Id)
+            if (id != leaveTypeEdit.Id)
             {
                 return NotFound();
+            }
+            if(await _leaveTypesService.CheckIfLeaveTypeNameExistsForEdit(leaveTypeEdit))
+            {
+                ModelState.AddModelError(nameof(leaveTypeEdit.Name), NameExistValidationMessage);
             }
 
             if (ModelState.IsValid)
             {
                 try
                 {
-                    _context.Update(leaveType);
-                    await _context.SaveChangesAsync();
+                    await _leaveTypesService.Edit(leaveTypeEdit);
                 }
                 catch (DbUpdateConcurrencyException)
                 {
-                    if (!LeaveTypeExists(leaveType.Id))
+                    if (!_leaveTypesService.LeaveTypeExists(leaveTypeEdit.Id))
                     {
                         return NotFound();
                     }
@@ -113,8 +122,10 @@ namespace LeaveManagementSystem.Web.Controllers
                 }
                 return RedirectToAction(nameof(Index));
             }
-            return View(leaveType);
+            return View(leaveTypeEdit);
         }
+
+       
 
         // GET: LeaveTypes/Delete/5
         public async Task<IActionResult> Delete(int? id)
@@ -124,8 +135,7 @@ namespace LeaveManagementSystem.Web.Controllers
                 return NotFound();
             }
 
-            var leaveType = await _context.LeaveTypes
-                .FirstOrDefaultAsync(m => m.Id == id);
+            var leaveType = await _leaveTypesService.Get<LeaveTypeReadOnlyVM>(id.Value);
             if (leaveType == null)
             {
                 return NotFound();
@@ -139,19 +149,10 @@ namespace LeaveManagementSystem.Web.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            var leaveType = await _context.LeaveTypes.FindAsync(id);
-            if (leaveType != null)
-            {
-                _context.LeaveTypes.Remove(leaveType);
-            }
-
-            await _context.SaveChangesAsync();
+            await _leaveTypesService.Remove(id);
             return RedirectToAction(nameof(Index));
         }
 
-        private bool LeaveTypeExists(int id)
-        {
-            return _context.LeaveTypes.Any(e => e.Id == id);
-        }
+       
     }
 }
